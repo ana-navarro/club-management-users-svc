@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Report missing project
+        if: hashFiles('package.json') == ''
+        run: echo "::notice::No package.json yet, so there is nothing to check."
+
+      - uses: actions/setup-node@v7
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+
+      - name: ESLint
+        if: hashFiles('package.json') != ''
+        run: npm run lint
+
+      - name: Type check
+        if: hashFiles('package.json') != ''
+        run: npm run typecheck
+
+      - name: Unit tests with coverage
+        if: hashFiles('package.json') != ''
+        run: |
+          if [ -n "$(node -p "require('./package.json').scripts?.['test:coverage'] ?? ''")" ]; then
+            npm run test:coverage
+          else
+            echo "::warning::No test:coverage script, so tests and the 80% coverage gate did not run."
+          fi
