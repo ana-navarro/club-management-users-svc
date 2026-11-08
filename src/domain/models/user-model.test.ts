@@ -63,6 +63,9 @@ it('exposes only public fields', () => {
     tokenVersion: 3,
     lockedUntil: null,
     knownNetworks: ['x'],
+    emailVerifiedAt: null,
+    verificationEmailSentAt: null,
+    socialIdentities: [],
   }
   expect(toPublicUser(user)).toEqual({
     id: '1',

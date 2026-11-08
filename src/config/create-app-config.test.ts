@@ -1,6 +1,6 @@
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import mongoose from 'mongoose'
-import request from 'supertest'
+import { call } from '../application/routes/test-app.mock.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserModel } from '../infra/schemas/users-schema.js'
 import { hashPassword } from '../infra/adapters/hash-password-adapter.js'
@@ -10,13 +10,16 @@ import type { EnvConfig } from './load-env-config.js'
 
 const config: EnvConfig = {
   port: 0,
-  appUrl: 'http://app.test',
+  adminAppUrl: 'http://app.test',
+  clientAppUrl: 'http://client.test',
   databaseUrl: '',
   databaseName: 'test',
   jwtSecret: 'a-secret-long-enough-for-the-integration-test',
   // Nothing listens here, so emails fail in the background, as they would in an outage.
   smtp: { host: '127.0.0.1', port: 1, requireTls: false, from: 'f@e.com' },
   tls: { ca: '', cert: '', key: '' },
+  google: null,
+  facebook: null,
 }
 
 describe('the assembled application', () => {
@@ -47,21 +50,21 @@ describe('the assembled application', () => {
   })
 
   const login = (password = 'right-password') =>
-    request(app).post('/auth/login').send({ email: 'ana@example.com', password, userType: 'ADMIN', ip: '10.0.0.1' })
+    call(app).post('/auth/login').send({ email: 'ana@example.com', password, userType: 'ADMIN', ip: '10.0.0.1' })
 
   it('logs in, reads the user, saves preferences and renews', async () => {
     const first = await login()
     expect(first.status).toBe(200)
     const auth = { authorization: `Bearer ${first.body.token}` }
 
-    const me = await request(app).get('/users/me').set(auth)
+    const me = await call(app).get('/users/me').set(auth)
     expect(me.body).toMatchObject({ email: 'ana@example.com', preferences: { theme: null } })
     expect(JSON.stringify(me.body)).not.toContain('passwordHash')
 
-    const saved = await request(app).patch('/users/me/preferences').set(auth).send({ language: 'en' })
+    const saved = await call(app).patch('/users/me/preferences').set(auth).send({ language: 'en' })
     expect(saved.body.preferences.language).toBe('en')
 
-    const renewed = await request(app).post('/auth/refresh').set(auth)
+    const renewed = await call(app).post('/auth/refresh').set(auth)
     expect(renewed.status).toBe(200)
     expect(renewed.body.token).not.toBe(first.body.token)
   })
@@ -70,7 +73,7 @@ describe('the assembled application', () => {
     const [first, second] = [await login(), await login()]
     expect(first.body.token).not.toBe(second.body.token)
     for (const response of [first, second]) {
-      const me = await request(app).get('/users/me').set('authorization', `Bearer ${response.body.token}`)
+      const me = await call(app).get('/users/me').set('authorization', `Bearer ${response.body.token}`)
       expect(me.status).toBe(200)
     }
   })
@@ -81,8 +84,8 @@ describe('the assembled application', () => {
   })
 
   it('answers password reset requests the same way, even with email down', async () => {
-    const known = await request(app).post('/auth/forgot-password').send({ email: 'ana@example.com' })
-    const missing = await request(app).post('/auth/forgot-password').send({ email: 'nobody@example.com' })
+    const known = await call(app).post('/auth/forgot-password').send({ email: 'ana@example.com' })
+    const missing = await call(app).post('/auth/forgot-password').send({ email: 'nobody@example.com' })
     expect([known.status, missing.status]).toEqual([202, 202])
     expect(known.text).toBe(missing.text)
   })

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { InvalidCredentialsError } from '../models/auth-errors-model.js'
+import { EmailNotVerifiedError, InvalidCredentialsError } from '../models/auth-errors-model.js'
 import type { User } from '../models/user-model.js'
 import type { LoginInput } from '../ports/auth-input-ports.js'
 import { LoginUserUsecase, type LoginUserDependencies } from './login-user-usecase.js'
@@ -18,6 +18,9 @@ const makeUser = (overrides: Partial<User> = {}): User => ({
   tokenVersion: 0,
   lockedUntil: null,
   knownNetworks: ['net:10.0.0'],
+  emailVerifiedAt: null,
+  verificationEmailSentAt: null,
+  socialIdentities: [],
   ...overrides,
 })
 
@@ -96,6 +99,7 @@ describe('LoginUserUsecase', () => {
     })
     expect(deps.sendLoginAttemptsEmail).toHaveBeenCalledWith({
       to: 'ana@example.com',
+      userType: 'ADMIN',
       language: 'en',
       token: 'link-token',
       attempts: 3,
@@ -121,10 +125,50 @@ describe('LoginUserUsecase', () => {
     expect(background).toHaveLength(0)
   })
 
+  it('treats an account without a password like an unknown email', async () => {
+    deps.findUserByEmail = vi.fn(async () => makeUser({ passwordHash: null }))
+    await expect(new LoginUserUsecase(deps).execute(input)).rejects.toThrow(InvalidCredentialsError)
+    expect(deps.verifyPassword).toHaveBeenCalledWith('dummy', 'right-password')
+    expect(deps.recordFailedLogin).not.toHaveBeenCalled()
+    expect(background).toHaveLength(0)
+  })
+
   it('refuses another user type with the same error, without counting a failure', async () => {
     deps.findUserByEmail = vi.fn(async () => makeUser({ type: 'CLIENT' }))
     await expect(new LoginUserUsecase(deps).execute(input)).rejects.toThrow(InvalidCredentialsError)
     expect(deps.recordFailedLogin).not.toHaveBeenCalled()
+  })
+
+  it('refuses an administrator in the client system, without counting a failure', async () => {
+    await expect(new LoginUserUsecase(deps).execute({ ...input, userType: 'CLIENT' })).rejects.toThrow(
+      InvalidCredentialsError,
+    )
+    expect(deps.recordFailedLogin).not.toHaveBeenCalled()
+  })
+
+  it('sends the alerts of a client account with the client type, so the link opens the client app', async () => {
+    const client = makeUser({ type: 'CLIENT', emailVerifiedAt: NOW, knownNetworks: ['net:other'] })
+    deps.findUserByEmail = vi.fn(async () => client)
+    await new LoginUserUsecase(deps).execute({ ...input, userType: 'CLIENT' })
+    deps.recordFailedLogin = vi.fn(async () => ({ locked: true }))
+    await expect(
+      new LoginUserUsecase(deps).execute({ ...input, userType: 'CLIENT', password: 'wrong' }),
+    ).rejects.toThrow(InvalidCredentialsError)
+    await flush()
+
+    expect(deps.sendNewLocationEmail).toHaveBeenCalledWith(expect.objectContaining({ userType: 'CLIENT' }))
+    expect(deps.sendLoginAttemptsEmail).toHaveBeenCalledWith(expect.objectContaining({ userType: 'CLIENT' }))
+  })
+
+  it('refuses an unconfirmed client only after the right password, without counting it', async () => {
+    deps.findUserByEmail = vi.fn(async () => makeUser({ type: 'CLIENT', emailVerifiedAt: null }))
+    const clientInput: LoginInput = { ...input, userType: 'CLIENT' }
+    await expect(new LoginUserUsecase(deps).execute(clientInput)).rejects.toThrow(EmailNotVerifiedError)
+    expect(deps.recordFailedLogin).not.toHaveBeenCalled()
+
+    await expect(new LoginUserUsecase(deps).execute({ ...clientInput, password: 'wrong' })).rejects.toThrow(
+      InvalidCredentialsError,
+    )
   })
 
   it('stays silent on a known network', async () => {
@@ -141,6 +185,7 @@ describe('LoginUserUsecase', () => {
     expect(deps.addKnownNetwork).toHaveBeenCalledWith('u1', 'net:200.1.2')
     expect(deps.sendNewLocationEmail).toHaveBeenCalledWith({
       to: 'ana@example.com',
+      userType: 'ADMIN',
       language: 'pt-BR',
       token: 'link-token',
       when: NOW,

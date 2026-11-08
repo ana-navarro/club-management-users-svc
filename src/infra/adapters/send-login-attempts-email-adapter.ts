@@ -1,6 +1,6 @@
 import type { Language } from '../../domain/models/user-model.js'
 import type { SendLoginAttemptsEmailPort } from '../../domain/ports/auth-output-ports.js'
-import { createResetLink, type EmailTransport } from './create-email-link-adapter.js'
+import { createResetLink, type AppUrls, type EmailTransport } from './create-email-link-adapter.js'
 
 const TEXTS: Record<Language, { subject: string; body: (attempts: number, link: string) => string }> = {
   'pt-BR': {
@@ -18,15 +18,15 @@ const TEXTS: Record<Language, { subject: string; body: (attempts: number, link: 
 export function createSendLoginAttemptsEmail(
   transport: EmailTransport,
   from: string,
-  appUrl: string,
+  appUrls: AppUrls,
 ): SendLoginAttemptsEmailPort {
-  return async ({ to, language, token, attempts }) => {
+  return async ({ to, language, token, userType, attempts }) => {
     const texts = TEXTS[language]
     await transport.sendMail({
       from,
       to,
       subject: texts.subject,
-      text: texts.body(attempts, createResetLink(appUrl, token)),
+      text: texts.body(attempts, createResetLink(appUrls[userType], token)),
     })
   }
 }

@@ -1,6 +1,6 @@
 import type { Language } from '../../domain/models/user-model.js'
 import type { SendPasswordResetEmailPort } from '../../domain/ports/auth-output-ports.js'
-import { createResetLink, type EmailTransport } from './create-email-link-adapter.js'
+import { createResetLink, type AppUrls, type EmailTransport } from './create-email-link-adapter.js'
 
 const TEXTS: Record<Language, { subject: string; body: (link: string) => string }> = {
   'pt-BR': {
@@ -18,10 +18,10 @@ const TEXTS: Record<Language, { subject: string; body: (link: string) => string 
 export function createSendPasswordResetEmail(
   transport: EmailTransport,
   from: string,
-  appUrl: string,
+  appUrls: AppUrls,
 ): SendPasswordResetEmailPort {
-  return async ({ to, language, token }) => {
+  return async ({ to, language, token, userType }) => {
     const texts = TEXTS[language]
-    await transport.sendMail({ from, to, subject: texts.subject, text: texts.body(createResetLink(appUrl, token)) })
+    await transport.sendMail({ from, to, subject: texts.subject, text: texts.body(createResetLink(appUrls[userType], token)) })
   }
 }

@@ -22,6 +22,8 @@ describe('ResetPasswordUsecase', () => {
       invalidatePasswordResetTokens: vi.fn(async () => undefined),
       hashPassword: vi.fn(async () => 'new-hash'),
       updateUserPassword: vi.fn(async () => undefined),
+      markEmailVerified: vi.fn(async () => undefined),
+      invalidateEmailVerificationTokens: vi.fn(async () => undefined),
       now: () => NOW,
     }
   })
@@ -33,6 +35,12 @@ describe('ResetPasswordUsecase', () => {
     expect(deps.markPasswordResetTokenUsed).toHaveBeenCalledWith('t1', NOW)
     expect(deps.updateUserPassword).toHaveBeenCalledWith('u1', 'new-hash')
     expect(deps.invalidatePasswordResetTokens).toHaveBeenCalledWith('u1', NOW)
+  })
+
+  it('also confirms the email and drops the pending confirmation links', async () => {
+    await new ResetPasswordUsecase(deps).execute({ token: 'raw', password: 'long-enough' })
+    expect(deps.markEmailVerified).toHaveBeenCalledWith('u1', NOW)
+    expect(deps.invalidateEmailVerificationTokens).toHaveBeenCalledWith('u1', NOW)
   })
 
   it('does not spend the link when the password is refused', async () => {

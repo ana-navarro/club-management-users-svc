@@ -1,5 +1,5 @@
 import type { TokenClaims } from '../models/session-model.js'
-import type { Language, Theme, User } from '../models/user-model.js'
+import type { Language, Theme, User, UserType } from '../models/user-model.js'
 
 export type PasswordResetToken = { id: string; userId: string; expiresAt: Date; usedAt: Date | null }
 
@@ -35,7 +35,7 @@ export type GenerateSessionIdPort = () => string
 export type SignTokenPort = (claims: TokenClaims, now: Date, expiresAt: Date) => string
 export type VerifyTokenPort = (token: string) => TokenClaims
 
-export type EmailRecipient = { to: string; language: Language; token: string }
+export type EmailRecipient = { to: string; language: Language; token: string; userType: UserType }
 export type SendPasswordResetEmailPort = (input: EmailRecipient) => Promise<void>
 export type SendLoginAttemptsEmailPort = (input: EmailRecipient & { attempts: number }) => Promise<void>
 export type SendNewLocationEmailPort = (

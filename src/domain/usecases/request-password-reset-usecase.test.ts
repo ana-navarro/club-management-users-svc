@@ -40,7 +40,7 @@ describe('RequestPasswordResetUsecase', () => {
       tokenHash: 'hashed',
       expiresAt: new Date('2026-01-01T12:00:00Z'),
     })
-    expect(deps.sendPasswordResetEmail).toHaveBeenCalledWith({ to: 'ana@example.com', language: 'pt-BR', token: 'raw' })
+    expect(deps.sendPasswordResetEmail).toHaveBeenCalledWith({ to: 'ana@example.com', userType: 'ADMIN', language: 'pt-BR', token: 'raw' })
   })
 
   it('sends nothing for an unknown email', async () => {
