@@ -1,6 +1,6 @@
 import type { Language } from '../../domain/models/user-model.js'
 import type { SendNewLocationEmailPort } from '../../domain/ports/auth-output-ports.js'
-import { createResetLink, type EmailTransport } from './create-email-link-adapter.js'
+import { createResetLink, type AppUrls, type EmailTransport } from './create-email-link-adapter.js'
 
 const MAXIMUM_USER_AGENT_LENGTH = 200
 
@@ -22,9 +22,9 @@ const TEXTS: Record<Language, { subject: string; unknown: string; body: (when: s
 export function createSendNewLocationEmail(
   transport: EmailTransport,
   from: string,
-  appUrl: string,
+  appUrls: AppUrls,
 ): SendNewLocationEmailPort {
-  return async ({ to, language, token, when, userAgent }) => {
+  return async ({ to, language, token, userType, when, userAgent }) => {
     const texts = TEXTS[language]
     const formatted = when.toLocaleString(language, { timeZone: 'UTC' })
     const browser = userAgent?.slice(0, MAXIMUM_USER_AGENT_LENGTH) || texts.unknown
@@ -32,7 +32,7 @@ export function createSendNewLocationEmail(
       from,
       to,
       subject: texts.subject,
-      text: texts.body(formatted, browser, createResetLink(appUrl, token)),
+      text: texts.body(formatted, browser, createResetLink(appUrls[userType], token)),
     })
   }
 }

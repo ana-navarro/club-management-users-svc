@@ -1,6 +1,7 @@
 import { InvalidResetLinkError, WeakPasswordError } from '../models/auth-errors-model.js'
 import { MINIMUM_PASSWORD_LENGTH } from '../models/user-model.js'
 import type { ResetPasswordInputPort } from '../ports/auth-input-ports.js'
+import type { InvalidateEmailVerificationTokensPort, MarkEmailVerifiedPort } from '../ports/registration-output-ports.js'
 import type {
   FindPasswordResetTokenPort,
   HashPasswordPort,
@@ -18,6 +19,8 @@ export type ResetPasswordDependencies = {
   invalidatePasswordResetTokens: InvalidatePasswordResetTokensPort
   hashPassword: HashPasswordPort
   updateUserPassword: UpdateUserPasswordPort
+  markEmailVerified: MarkEmailVerifiedPort
+  invalidateEmailVerificationTokens: InvalidateEmailVerificationTokensPort
   now: NowPort
 }
 
@@ -44,5 +47,8 @@ export class ResetPasswordUsecase implements ResetPasswordInputPort {
 
     await deps.updateUserPassword(resetToken.userId, passwordHash)
     await deps.invalidatePasswordResetTokens(resetToken.userId, now)
+    // The link reached the inbox of the account, which proves the email (research R8).
+    await deps.markEmailVerified(resetToken.userId, now)
+    await deps.invalidateEmailVerificationTokens(resetToken.userId, now)
   }
 }

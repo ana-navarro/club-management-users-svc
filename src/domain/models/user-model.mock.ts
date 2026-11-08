@@ -13,6 +13,9 @@ export const makeUser = (overrides: Partial<User> = {}): User => ({
   tokenVersion: 0,
   lockedUntil: null,
   knownNetworks: [],
+  emailVerifiedAt: new Date('2026-01-01T00:00:00Z'),
+  verificationEmailSentAt: null,
+  socialIdentities: [],
   ...overrides,
 })
 

@@ -1,3 +1,5 @@
+import type { SocialIdentity } from './social-identity-model.js'
+
 export type UserType = 'ADMIN' | 'CLIENT'
 export type Theme = 'light' | 'dark'
 export type Language = 'pt-BR' | 'en'
@@ -8,7 +10,8 @@ export type User = {
   id: string
   name: string
   email: string
-  passwordHash: string
+  // null for an account created by a provider, until the person sets a password.
+  passwordHash: string | null
   type: UserType
   clubs: Club[]
   theme: Theme | null
@@ -16,6 +19,9 @@ export type User = {
   tokenVersion: number
   lockedUntil: Date | null
   knownNetworks: string[]
+  emailVerifiedAt: Date | null
+  verificationEmailSentAt: Date | null
+  socialIdentities: SocialIdentity[]
 }
 
 export type PublicUser = {
@@ -32,6 +38,10 @@ export const MAXIMUM_LOGIN_ATTEMPTS = 3
 export const LOGIN_LOCK_MINUTES = 15
 export const MAXIMUM_PASSWORD_RESET_REQUESTS = 5
 export const PASSWORD_RESET_LINK_HOURS = 2
+export const EMAIL_VERIFICATION_LINK_HOURS = 24
+export const VERIFICATION_RESEND_SECONDS = 60
+export const MAXIMUM_REGISTRATIONS_PER_HOUR = 10
+export const MAXIMUM_NAME_LENGTH = 100
 
 export function toPublicUser(user: User): PublicUser {
   return {

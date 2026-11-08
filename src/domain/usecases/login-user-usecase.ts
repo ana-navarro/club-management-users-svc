@@ -1,46 +1,27 @@
-import { InvalidCredentialsError } from '../models/auth-errors-model.js'
+import { EmailNotVerifiedError, InvalidCredentialsError } from '../models/auth-errors-model.js'
 import { getSessionTimes, toTokenClaims } from '../models/session-model.js'
-import {
-  MAXIMUM_LOGIN_ATTEMPTS,
-  PASSWORD_RESET_LINK_HOURS,
-  getNetworkPrefix,
-  normalizeEmail,
-  resolveLanguage,
-  toPublicUser,
-  type User,
-} from '../models/user-model.js'
+import { MAXIMUM_LOGIN_ATTEMPTS, normalizeEmail, resolveLanguage, toPublicUser, type User } from '../models/user-model.js'
 import type { LoginInput, LoginOutput, LoginUserInputPort } from '../ports/auth-input-ports.js'
 import type {
-  AddKnownNetworkPort,
   ClearFailedLoginsPort,
-  CreatePasswordResetTokenPort,
   FindUserByEmailPort,
-  GenerateResetTokenPort,
   GenerateSessionIdPort,
-  HashNetworkPort,
   NowPort,
   RecordFailedLoginPort,
-  RunInBackgroundPort,
   SendLoginAttemptsEmailPort,
-  SendNewLocationEmailPort,
   SignTokenPort,
   VerifyPasswordPort,
 } from '../ports/auth-output-ports.js'
+import { checkNewNetwork, createResetLinkToken, type CheckNewNetworkDependencies } from './check-new-network-usecase.js'
 
-export type LoginUserDependencies = {
+export type LoginUserDependencies = CheckNewNetworkDependencies & {
   findUserByEmail: FindUserByEmailPort
   verifyPassword: VerifyPasswordPort
   recordFailedLogin: RecordFailedLoginPort
   clearFailedLogins: ClearFailedLoginsPort
-  addKnownNetwork: AddKnownNetworkPort
-  hashNetwork: HashNetworkPort
-  generateResetToken: GenerateResetTokenPort
-  createPasswordResetToken: CreatePasswordResetTokenPort
   sendLoginAttemptsEmail: SendLoginAttemptsEmailPort
-  sendNewLocationEmail: SendNewLocationEmailPort
   generateSessionId: GenerateSessionIdPort
   signToken: SignTokenPort
-  runInBackground: RunInBackgroundPort
   now: NowPort
   dummyPasswordHash: string
 }
@@ -57,7 +38,8 @@ export class LoginUserUsecase implements LoginUserInputPort {
     const now = deps.now()
     const user = await deps.findUserByEmail(normalizeEmail(input.email))
 
-    if (!user) {
+    // An account without a password, created by a provider, answers like an unknown email.
+    if (!user || user.passwordHash === null) {
       // Spends the same time as a real check, so timing does not reveal the account.
       await deps.verifyPassword(deps.dummyPasswordHash, input.password)
       throw new InvalidCredentialsError()
@@ -75,8 +57,11 @@ export class LoginUserUsecase implements LoginUserInputPort {
 
     if (user.type !== input.userType) throw new InvalidCredentialsError()
 
+    // Only after the right password, and without counting a failure (research R8).
+    if (user.type === 'CLIENT' && user.emailVerifiedAt === null) throw new EmailNotVerifiedError()
+
     await deps.clearFailedLogins(user.id)
-    await this.checkNetwork(user, input, now)
+    await checkNewNetwork(deps, user, input, now)
 
     const sessionTimes = getSessionTimes(now, now)
     const token = deps.signToken(toTokenClaims(user, deps.generateSessionId(), now), now, sessionTimes.expiresAt)
@@ -84,46 +69,17 @@ export class LoginUserUsecase implements LoginUserInputPort {
     return { token, ...sessionTimes, user: toPublicUser(user) }
   }
 
-  private async checkNetwork(user: User, input: LoginInput, now: Date): Promise<void> {
-    const { deps } = this
-    const prefix = getNetworkPrefix(input.ip)
-    if (!prefix) return
-
-    const networkHash = deps.hashNetwork(prefix)
-    if (user.knownNetworks.includes(networkHash)) return
-
-    await deps.addKnownNetwork(user.id, networkHash)
-    if (user.knownNetworks.length === 0) return
-
-    deps.runInBackground(async () => {
-      const token = await this.createResetLink(user, now)
-      await deps.sendNewLocationEmail({
-        to: user.email,
-        language: resolveLanguage(user.language, input.language),
-        token,
-        when: now,
-        userAgent: input.userAgent,
-      })
-    })
-  }
-
   private sendLoginAttemptsEmail(user: User, input: LoginInput, now: Date): void {
     const { deps } = this
     deps.runInBackground(async () => {
-      const token = await this.createResetLink(user, now)
+      const token = await createResetLinkToken(deps, user, now)
       await deps.sendLoginAttemptsEmail({
         to: user.email,
+        userType: user.type,
         language: resolveLanguage(user.language, input.language),
         token,
         attempts: MAXIMUM_LOGIN_ATTEMPTS,
       })
     })
-  }
-
-  private async createResetLink(user: User, now: Date): Promise<string> {
-    const { token, tokenHash } = this.deps.generateResetToken()
-    const expiresAt = new Date(now.getTime() + PASSWORD_RESET_LINK_HOURS * 60 * 60 * 1000)
-    await this.deps.createPasswordResetToken({ userId: user.id, tokenHash, expiresAt })
-    return token
   }
 }

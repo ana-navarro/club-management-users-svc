@@ -18,6 +18,9 @@ const user: User = {
   tokenVersion: 1,
   lockedUntil: null,
   knownNetworks: [],
+  emailVerifiedAt: null,
+  verificationEmailSentAt: null,
+  socialIdentities: [],
 }
 
 const claims: TokenClaims = {

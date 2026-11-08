@@ -58,6 +58,7 @@ export class RequestPasswordResetUsecase implements RequestPasswordResetInputPor
     })
     await deps.sendPasswordResetEmail({
       to: user.email,
+      userType: user.type,
       language: resolveLanguage(user.language, input.language),
       token,
     })
